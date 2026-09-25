@@ -1,0 +1,82 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Nunito", ui-sans-serif, system-ui, sans-serif;
+
+  /* Brand accents — identical in both themes. */
+  --color-charcoal: #171e19;
+  --color-sage: #b7c6c2;
+  --color-red: #ca0013;
+  --color-cream: #eeebe3;
+  --color-white: #ffffff;
+
+  /* Adaptive surfaces — these are the ones that flip for dark mode. */
+  --color-base: #eeebe3;
+  --color-surface: #ffffff;
+  --color-ink: #171e19;
+
+  --radius-card: 2.5rem;
+  --radius-nested: 1.5rem;
+
+  --shadow-soft: 0 20px 50px -12px rgba(0, 0, 0, 0.08);
+  --shadow-red-glow: 0 12px 30px -8px rgba(202, 0, 19, 0.35);
+}
+
+/* Dark mode: applied only when the user explicitly picks "Dark" in Settings
+   — see src/hooks/useTheme.js. color-scheme keeps native controls
+   (time/number inputs, scrollbars) matching too. */
+:root {
+  color-scheme: light;
+}
+:root[data-theme="dark"] {
+  --color-base: #14181a;
+  --color-surface: #1e2623;
+  --color-ink: #f2efe8;
+  color-scheme: dark;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  background-color: var(--color-base);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  -webkit-tap-highlight-color: transparent;
+  overscroll-behavior-y: none;
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+* {
+  scrollbar-width: thin;
+}
+
+/* iOS Safari auto-zooms the whole page in when a focused text input's font
+   is under 16px, then zooms back out on blur — the "randomly zooms in/out"
+   behavior on iPhone. Every form field in the app uses Tailwind's smaller
+   text sizes for visual density, so this is a blanket override rather than
+   editing every input individually (and it protects any input added later
+   too). !important is deliberate: it needs to beat Tailwind's text-xs/
+   text-sm utility classes regardless of which component sets them. */
+input,
+select,
+textarea {
+  font-size: 16px !important;
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-duration: 0.25s;
+  animation-timing-function: ease-in-out;
+}
