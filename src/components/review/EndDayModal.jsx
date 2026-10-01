@@ -3,7 +3,15 @@ import { useLiveQuery } from "dexie-react-hooks";
 import Modal from "../ui/Modal";
 import ScoreRing from "../ui/ScoreRing";
 import BentoMetric from "../ui/BentoMetric";
-import { tasksRepo, ideasRepo, vocabRepo, scoresRepo, settingsRepo } from "../../db/repository";
+import {
+  tasksRepo,
+  ideasRepo,
+  vocabRepo,
+  scoresRepo,
+  settingsRepo,
+  advanceActiveDay,
+  materializeRecurringTasksIfNeeded,
+} from "../../db/repository";
 import { computeDailyScore } from "../../lib/scoring";
 import { getQuoteOfTheDay } from "../../lib/dailyQuote";
 import { localDateFromISO } from "../../lib/dates";
@@ -16,7 +24,11 @@ const CARRY_ACTIONS = [
   { value: "delete", label: "Delete" },
 ];
 
-export default function EndDayModal({ date, onClose }) {
+export default function EndDayModal({ date: dateProp, onClose }) {
+  // Frozen on open — the active day advances (below) as soon as the score
+  // is tallied, which would otherwise change this prop out from under the
+  // modal while it's still showing the carry-over step.
+  const [date] = useState(dateProp);
   const [result, setResult] = useState(null);
   const [pendingTasks, setPendingTasks] = useState([]);
   const [choices, setChoices] = useState({});
@@ -42,6 +54,12 @@ export default function EndDayModal({ date, onClose }) {
         caps: settings.scoreCaps,
       });
       await scoresRepo.upsert(date, scoreData);
+      // The only place the active day is allowed to move forward — tapping
+      // "End my day" and having it tally a score IS what ends the day.
+      // Re-materializing right after means tomorrow's recurring tasks show
+      // up immediately instead of waiting for a fresh app launch.
+      await advanceActiveDay(date);
+      await materializeRecurringTasksIfNeeded();
       setResult(scoreData);
 
       const unfinished = tasks.filter((t) => t.status === "Not started" || t.status === "In progress");

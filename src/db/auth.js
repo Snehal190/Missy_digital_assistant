@@ -2,9 +2,14 @@
 // used both by the sync layer (synchronously, via getCurrentUserId) and by
 // React components (reactively, via the useAuthSession hook).
 //
-// Email magic-link is the implemented method. To swap to anonymous sign-in
-// instead (skips the login step entirely), replace signInWithEmail's body
-// with a single call: `await supabase.auth.signInAnonymously()`.
+// No sign-in step: every device that opens Missy gets its own anonymous
+// Supabase user automatically, the first time it loads. That identity is
+// exactly as private as the local Dexie data it backs up (nobody else can
+// read it — it's just a real auth.uid() with the same RLS-scoped rows any
+// other user would get), it just never asks for an email/password/magic
+// link. Requires "Anonymous sign-ins" enabled in the Supabase project's
+// Auth settings — if it's off, signInAnonymously() fails and this device
+// simply stays local-only until it's turned on, same as being signed out.
 import { supabase } from "./supabaseClient";
 
 let currentUser = null; // { id, email } | null
@@ -18,7 +23,14 @@ function setUser(user) {
 }
 
 if (supabase) {
-  supabase.auth.getSession().then(({ data }) => setUser(data.session?.user ?? null));
+  supabase.auth.getSession().then(async ({ data }) => {
+    if (data.session?.user) {
+      setUser(data.session.user);
+      return;
+    }
+    const { data: signedIn, error } = await supabase.auth.signInAnonymously();
+    setUser(error ? null : signedIn.user);
+  });
   supabase.auth.onAuthStateChange((_event, session) => setUser(session?.user ?? null));
 }
 
@@ -38,18 +50,4 @@ export function isAuthReady() {
 export function subscribeAuth(fn) {
   listeners.add(fn);
   return () => listeners.delete(fn);
-}
-
-export async function signInWithEmail(email) {
-  if (!supabase) throw new Error("Cloud backup isn't configured.");
-  const { error } = await supabase.auth.signInWithOtp({
-    email,
-    options: { emailRedirectTo: window.location.origin },
-  });
-  if (error) throw error;
-}
-
-export async function signOut() {
-  if (!supabase) return;
-  await supabase.auth.signOut();
 }

@@ -2,13 +2,11 @@ import { useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { Link } from "react-router-dom";
 import PageHeader from "../components/layout/PageHeader";
-import { settingsRepo, exportAllData, clearAllData, clearDataForDate, forceFullResync } from "../db/repository";
-import { todayStr } from "../lib/dates";
+import { settingsRepo, exportAllData, clearAllData, clearDataForDate, forceFullResync, getActiveDay } from "../db/repository";
 import { useTheme } from "../hooks/useTheme";
 import { useAuthSession } from "../hooks/useAuthSession";
 import { useNotify } from "../hooks/useNotify";
 import { supabase } from "../db/supabaseClient";
-import { signInWithEmail, signOut } from "../db/auth";
 import { PlusIcon, TrashIcon, DownloadIcon, SunIcon, MoonIcon, SyncIcon, CloudOffIcon } from "../components/icons";
 
 const THEME_OPTIONS = [
@@ -69,8 +67,6 @@ function TagEditor({ label, tags, onChange }) {
 
 function CloudBackupSection({ resyncStatus, onForceResync }) {
   const { user, ready } = useAuthSession();
-  const [email, setEmail] = useState("");
-  const [status, setStatus] = useState("idle"); // idle | sending | sent | error message
 
   if (!supabase) {
     return (
@@ -83,24 +79,12 @@ function CloudBackupSection({ resyncStatus, onForceResync }) {
   }
   if (!ready) return null;
 
-  async function send(e) {
-    e.preventDefault();
-    setStatus("sending");
-    try {
-      await signInWithEmail(email);
-      setStatus("sent");
-    } catch (err) {
-      setStatus(err.message || "Something went wrong.");
-    }
-  }
-
   return (
     <Section title="Cloud backup">
       {user ? (
         <>
           <p className="text-xs font-semibold text-sage">
-            Signed in as <span className="font-bold text-ink">{user.email}</span>. Your history syncs to Supabase
-            in the background.
+            Everything you add automatically backs up to Supabase in the background — no sign-in needed.
           </p>
           <button
             type="button"
@@ -111,40 +95,12 @@ function CloudBackupSection({ resyncStatus, onForceResync }) {
             <SyncIcon className="h-4 w-4" />
             {resyncStatus === "busy" ? "Queuing everything…" : resyncStatus === "done" ? "Queued — check backup status" : "Force full resync"}
           </button>
-          <button type="button" onClick={() => signOut()} className="h-11 w-full rounded-2xl border border-sage/30 bg-base text-sm font-bold text-ink">
-            Sign out
-          </button>
         </>
       ) : (
-        <>
-          <p className="flex items-center gap-2 text-xs font-semibold text-sage">
-            <CloudOffIcon className="h-4 w-4 shrink-0" />
-            Signed out — everything stays local-only on this device. Sign in to also back up to the cloud.
-          </p>
-          <form onSubmit={send} className="flex gap-2">
-            <input
-              type="email"
-              required
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="you@example.com"
-              className="h-11 flex-1 rounded-2xl border border-sage/30 bg-base px-3 text-sm font-semibold text-ink focus:border-ink focus:outline-none"
-            />
-            <button
-              type="submit"
-              disabled={!email || status === "sending"}
-              className="h-11 shrink-0 rounded-2xl bg-charcoal px-4 text-xs font-bold text-white disabled:opacity-40"
-            >
-              {status === "sending" ? "Sending…" : "Send link"}
-            </button>
-          </form>
-          {status === "sent" && (
-            <p className="text-xs font-semibold text-ink">Check your email for a sign-in link.</p>
-          )}
-          {status !== "idle" && status !== "sending" && status !== "sent" && (
-            <p className="text-xs font-semibold text-red">{status}</p>
-          )}
-        </>
+        <p className="flex items-center gap-2 text-xs font-semibold text-sage">
+          <CloudOffIcon className="h-4 w-4 shrink-0" />
+          Couldn't connect to cloud backup — everything still works, just local-only on this device for now.
+        </p>
       )}
     </Section>
   );
@@ -213,7 +169,7 @@ export default function Settings() {
   }
 
   async function handleClearToday() {
-    await clearDataForDate(todayStr());
+    await clearDataForDate(await getActiveDay());
     setConfirmClearToday(false);
   }
 

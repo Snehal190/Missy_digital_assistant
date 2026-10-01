@@ -4,8 +4,7 @@ import Modal from "../ui/Modal";
 import SchedulePreviewItem from "./SchedulePreviewItem";
 import { useAudioRecorder } from "../../hooks/useAudioRecorder";
 import { planDay, planDayFromAudio, PlanDayError } from "../../lib/api";
-import { tasksRepo, settingsRepo } from "../../db/repository";
-import { todayStr } from "../../lib/dates";
+import { tasksRepo, settingsRepo, getActiveDay } from "../../db/repository";
 import { MicIcon } from "../icons";
 
 function dedupe(tasks) {
@@ -130,7 +129,7 @@ export default function VoicePlanner({ onClose, onSaved }) {
   }
 
   async function confirmSave() {
-    const date = todayStr();
+    const date = await getActiveDay();
     await tasksRepo.createMany(
       items
         .filter((it) => it.title.trim())

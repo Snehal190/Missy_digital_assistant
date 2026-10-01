@@ -47,7 +47,7 @@ export const tasksRepo = {
       priority: "Medium",
       category: "Personal",
       status: "Not started",
-      date: todayStr(),
+      date: await getActiveDay(),
       source: "manual",
       ...task,
     };
@@ -139,12 +139,12 @@ export const recurringTasksRepo = {
 // every app load — idempotent via settings.materializedFor, so opening the
 // app repeatedly the same day never creates duplicates.
 export async function materializeRecurringTasksIfNeeded() {
-  const today = todayStr();
+  const activeDay = await getActiveDay();
   const settings = await settingsRepo.get();
-  if (settings.materializedFor === today) return;
+  if (settings.materializedFor === activeDay) return;
 
   const templates = await db.recurringTasks.toArray();
-  const due = templates.filter((t) => !t.paused && isDueOn(t.recurrence, today));
+  const due = templates.filter((t) => !t.paused && isDueOn(t.recurrence, activeDay));
 
   for (const template of due) {
     await tasksRepo.create({
@@ -153,14 +153,14 @@ export async function materializeRecurringTasksIfNeeded() {
       duration: template.duration,
       priority: template.priority,
       category: template.category,
-      date: today,
+      date: activeDay,
       source: "recurring",
       recurrence: template.recurrence,
       recurringTemplateId: template.id,
     });
   }
 
-  await settingsRepo.update({ materializedFor: today });
+  await settingsRepo.update({ materializedFor: activeDay });
 }
 
 // Routine templates — a named, reusable bundle of tasks (titles/times/
@@ -187,8 +187,8 @@ export const templatesRepo = {
 // Captures today's current tasks (not their statuses) as a new named
 // template.
 export async function saveTodayAsTemplate(name) {
-  const today = todayStr();
-  const tasks = await tasksRepo.listByDate(today);
+  const activeDay = await getActiveDay();
+  const tasks = await tasksRepo.listByDate(activeDay);
   return templatesRepo.create({
     name,
     tasks: tasks.map((t) => ({
@@ -206,9 +206,9 @@ export async function saveTodayAsTemplate(name) {
 export async function applyTemplate(templateId, { mode = "merge" } = {}) {
   const template = await templatesRepo.get(templateId);
   if (!template) return;
-  const today = todayStr();
+  const activeDay = await getActiveDay();
 
-  if (mode === "replace") await tasksRepo.removeByDate(today);
+  if (mode === "replace") await tasksRepo.removeByDate(activeDay);
 
   await tasksRepo.createMany(
     template.tasks.map((t) => ({
@@ -218,7 +218,7 @@ export async function applyTemplate(templateId, { mode = "merge" } = {}) {
       priority: t.priority,
       category: t.category,
       status: "Not started",
-      date: today,
+      date: activeDay,
       source: "template",
     })),
   );
@@ -274,7 +274,7 @@ export const ideasRepo = {
 // the idea can show a "became a task" marker and the task can be traced
 // back to the thought that spawned it.
 export async function promoteIdeaToTask(idea, taskValues) {
-  const taskId = await tasksRepo.create({ ...taskValues, date: todayStr(), sourceIdeaId: idea.id });
+  const taskId = await tasksRepo.create({ ...taskValues, date: await getActiveDay(), sourceIdeaId: idea.id });
   await ideasRepo.update(idea.id, { promotedToTaskId: taskId });
   return taskId;
 }
@@ -284,7 +284,7 @@ export const vocabRepo = {
     return db.vocab.orderBy("dateLearned").reverse().toArray();
   },
   async create(word) {
-    const row = { word: "", meaning: "", example: "", dateLearned: todayStr(), ...defaultSrsFields(), ...word };
+    const row = { word: "", meaning: "", example: "", dateLearned: await getActiveDay(), ...defaultSrsFields(), ...word };
     const id = await db.vocab.add(row);
     syncUpsert("vocab", toVocabRow({ ...row, id }));
     return id;
@@ -405,7 +405,11 @@ export const historyRepo = {
 // (see src/lib/streaks.js) rather than a stored counter.
 export async function getStreaks() {
   const [settings, scores, vocab] = await Promise.all([settingsRepo.get(), db.scores.toArray(), db.vocab.toArray()]);
-  const today = todayStr();
+  // Read-only: this is called reactively (useLiveQuery), so it must never
+  // write — getActiveDay()'s one-time seed happens elsewhere (App's mount
+  // effect). Falls back to the wall-clock date for the brief window before
+  // that seed has landed.
+  const today = settings.activeDay || todayStr();
 
   const reviewDates = new Set(scores.map((s) => s.date));
   const scoreDates = new Set(scores.filter((s) => s.score >= settings.scoreStreakThreshold).map((s) => s.date));
@@ -605,6 +609,29 @@ export const settingsRepo = {
     return next;
   },
 };
+
+// The user's current "working day" for tasks/ideas/vocab — everything that
+// decides "what day is it for logging purposes" reads this instead of the
+// wall clock, and it only ever moves forward via advanceActiveDay() (called
+// once End My Day finishes tallying the score). So the day never rolls over
+// on its own just because midnight passed; it stays open until the user
+// explicitly ends it, however late that is. Deliberately NOT part of
+// DEFAULT_SETTINGS (which would silently recompute to "now" on every read
+// for anyone missing the key) — it's set once, for real, the first time
+// this is called, and persisted from then on.
+export async function getActiveDay() {
+  const settings = await settingsRepo.get();
+  if (settings.activeDay) return settings.activeDay;
+  const day = todayStr();
+  await settingsRepo.update({ activeDay: day });
+  return day;
+}
+
+export async function advanceActiveDay(fromDay) {
+  const next = addDaysToStr(fromDay, 1);
+  await settingsRepo.update({ activeDay: next });
+  return next;
+}
 
 export async function exportAllData() {
   const [tasks, ideas, vocab, scores, settings, sleep, screenTime, recurringTasks, templates, weeklyReviews] =

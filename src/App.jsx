@@ -18,14 +18,18 @@ import { settingsRepo, materializeRecurringTasksIfNeeded, backfillVocabSrsIfNeed
 import { useTheme } from "./hooks/useTheme";
 import { useReminderScheduler } from "./hooks/useReminderScheduler";
 import { startSyncQueueEngine } from "./db/syncQueue";
-import { todayStr } from "./lib/dates";
 
 export default function App() {
   const [voiceOpen, setVoiceOpen] = useState(false);
   useTheme();
 
-  const todaysTasks = useLiveQuery(() => tasksRepo.listByDate(todayStr()), []) || [];
   const settings = useLiveQuery(() => settingsRepo.get(), []);
+  // Reads the already-live settings row rather than calling getActiveDay()
+  // here directly — that function's one-time seed-if-missing write must
+  // only ever run from the plain (non-reactive) effect below, never from
+  // inside a useLiveQuery querier.
+  const activeDay = settings?.activeDay;
+  const todaysTasks = useLiveQuery(() => (activeDay ? tasksRepo.listByDate(activeDay) : []), [activeDay]) || [];
   useReminderScheduler(todaysTasks, settings);
 
   useEffect(() => {

@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { useSearchParams, Link } from "react-router-dom";
-import { format } from "date-fns";
 import PageHeader from "../components/layout/PageHeader";
 import CategoryScroller from "../components/tasks/CategoryScroller";
 import TaskCard from "../components/tasks/TaskCard";
@@ -11,18 +10,29 @@ import BentoMetric from "../components/ui/BentoMetric";
 import EndDayModal from "../components/review/EndDayModal";
 import SaveTemplateModal from "../components/tasks/SaveTemplateModal";
 import ApplyTemplateModal from "../components/tasks/ApplyTemplateModal";
-import { tasksRepo, settingsRepo, recurringTasksRepo, vocabRepo, getStreaks } from "../db/repository";
-import { todayStr } from "../lib/dates";
+import { tasksRepo, settingsRepo, recurringTasksRepo, vocabRepo, getStreaks, getActiveDay } from "../db/repository";
+import { formatFriendly } from "../lib/dates";
 import { getQuoteOfTheDay } from "../lib/dailyQuote";
 import { ChartIcon, CheckIcon, SparkleIcon, SyncIcon, DownloadIcon } from "../components/icons";
 
 export default function Today() {
-  const date = todayStr();
-  const tasks = useLiveQuery(() => tasksRepo.listByDate(date), [date]) || [];
   const settings = useLiveQuery(() => settingsRepo.get(), []);
+  // The user's current working day — stays put across midnight until they
+  // explicitly tap "End my day" (see EndDayModal), so unfinished tasks never
+  // silently disappear just because the wall clock rolled over. Read from
+  // the already-live settings row; getActiveDay()'s one-time seed-if-missing
+  // write runs in the plain effect below, never inside a useLiveQuery
+  // querier (App.jsx's own mount effect already seeds this too, so this is
+  // just a safety net for landing here first).
+  const date = settings?.activeDay;
+  const tasks = useLiveQuery(() => (date ? tasksRepo.listByDate(date) : []), [date]) || [];
   const streaks = useLiveQuery(() => getStreaks(), []);
   const wordsDueToday = useLiveQuery(() => vocabRepo.countDueToday(), []) || 0;
   const tags = settings?.tagList || [];
+
+  useEffect(() => {
+    getActiveDay();
+  }, []);
 
   const [category, setCategory] = useState("All");
   const [formTask, setFormTask] = useState(null);
@@ -52,7 +62,7 @@ export default function Today() {
     return c;
   }, [tasks, tags]);
 
-  const quote = getQuoteOfTheDay(date, settings?.customQuotes || []);
+  const quote = date ? getQuoteOfTheDay(date, settings?.customQuotes || []) : "";
   const visibleTasks = category === "All" ? tasks : tasks.filter((t) => t.category === category);
   const completed = tasks.filter((t) => t.status === "Done").length;
   const remaining = tasks.filter((t) => t.status !== "Done" && t.status !== "Skipped").length;
@@ -92,7 +102,7 @@ export default function Today() {
 
   return (
     <div className="space-y-5">
-      <PageHeader eyebrow={format(new Date(), "EEEE, MMM d")} title="Good day." badgeCount={remaining} />
+      <PageHeader eyebrow={date ? formatFriendly(date) : ""} title="Good day." badgeCount={remaining} />
 
       {streaks && (
         <div className="mx-5 flex flex-wrap items-center gap-2">
