@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import Modal from "../ui/Modal";
 import ScoreRing from "../ui/ScoreRing";
@@ -36,9 +36,15 @@ export default function EndDayModal({ date: dateProp, onClose }) {
   const [applying, setApplying] = useState(false);
   const settings = useLiveQuery(() => settingsRepo.get(), []);
   const quote = getQuoteOfTheDay(date, settings?.customQuotes || []);
+  // Tallying writes to settings itself (advanceActiveDay, materialize...),
+  // which would otherwise re-trigger this effect via the live `settings`
+  // dependency and reset every carry-over choice back to "carry" mid-review.
+  // This guard makes the whole tally run exactly once per modal instance.
+  const tallied = useRef(false);
 
   useEffect(() => {
-    if (!settings) return;
+    if (!settings || tallied.current) return;
+    tallied.current = true;
     (async () => {
       const [tasks, ideas, words] = await Promise.all([
         tasksRepo.listByDate(date),
