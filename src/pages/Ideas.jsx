@@ -102,6 +102,7 @@ export default function Ideas() {
             key={idea.id}
             idea={idea}
             onRemove={(i) => ideasRepo.remove(i.id)}
+            onUpdate={(id, changes) => ideasRepo.update(id, changes)}
             onPromote={setPromotingIdea}
           />
         ))}
