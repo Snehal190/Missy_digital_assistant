@@ -10,8 +10,8 @@ import BentoMetric from "../components/ui/BentoMetric";
 import EndDayModal from "../components/review/EndDayModal";
 import SaveTemplateModal from "../components/tasks/SaveTemplateModal";
 import ApplyTemplateModal from "../components/tasks/ApplyTemplateModal";
-import { tasksRepo, settingsRepo, recurringTasksRepo, vocabRepo, getStreaks, getActiveDay } from "../db/repository";
-import { formatFriendly } from "../lib/dates";
+import { tasksRepo, settingsRepo, recurringTasksRepo, vocabRepo, getStreaks, getActiveDay, jumpActiveDayToToday } from "../db/repository";
+import { formatFriendly, todayStr } from "../lib/dates";
 import { getQuoteOfTheDay } from "../lib/dailyQuote";
 import { ChartIcon, CheckIcon, SparkleIcon, SyncIcon, DownloadIcon } from "../components/icons";
 
@@ -103,6 +103,24 @@ export default function Today() {
   return (
     <div className="space-y-5">
       <PageHeader eyebrow={date ? formatFriendly(date) : ""} title="Good day." badgeCount={remaining} />
+
+      {date && date < todayStr() && (
+        <div className="mx-5 space-y-2 rounded-2xl bg-sage/20 p-3 text-xs font-semibold text-ink">
+          <p>
+            You're still on {formatFriendly(date)}. Missy won't close a day on its own — tap "End my day" when
+            you're done with it and you'll move on to today.
+          </p>
+          {tasks.length === 0 && (
+            <button
+              type="button"
+              onClick={jumpActiveDayToToday}
+              className="h-9 w-full rounded-xl bg-charcoal text-xs font-bold text-white"
+            >
+              Nothing here — skip ahead to today
+            </button>
+          )}
+        </div>
+      )}
 
       {streaks && (
         <div className="mx-5 flex flex-wrap items-center gap-2">

@@ -79,7 +79,12 @@ export const tasksRepo = {
   // fresh row on tomorrow's date carrying the same fields forward, plus
   // `carriedFrom`/`carryCount` for the "Nth day" UI nudge.
   async carryToTomorrow(task) {
-    const tomorrow = addDaysToStr(task.date, 1);
+    // "Tomorrow" = the day the user is moving on to (End My Day has already
+    // advanced the active day by the time this runs), which can be later
+    // than task.date + 1 when a day was ended late.
+    const nextDay = addDaysToStr(task.date, 1);
+    const activeDay = await getActiveDay();
+    const tomorrow = activeDay > nextDay ? activeDay : nextDay;
     return tasksRepo.create({
       title: task.title,
       time: task.time,
@@ -627,10 +632,22 @@ export async function getActiveDay() {
   return day;
 }
 
+// Moves on from `fromDay` to the next day — or straight to today's real
+// date if that's later, so ending a day late (or skipping days) never leaves
+// the app stuck behind the calendar.
 export async function advanceActiveDay(fromDay) {
   const next = addDaysToStr(fromDay, 1);
-  await settingsRepo.update({ activeDay: next });
-  return next;
+  const today = todayStr();
+  const target = next > today ? next : today;
+  await settingsRepo.update({ activeDay: target });
+  return target;
+}
+
+// For a lagging day with nothing in it: jump to today without recording a
+// score (ending an empty day would log a free ~70 and pad the streak).
+export async function jumpActiveDayToToday() {
+  await settingsRepo.update({ activeDay: todayStr() });
+  await materializeRecurringTasksIfNeeded();
 }
 
 export async function exportAllData() {
