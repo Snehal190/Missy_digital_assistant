@@ -2,6 +2,7 @@ import { useRef, useState } from "react";
 import { TrashIcon } from "../icons";
 
 const DELETE_THRESHOLD = 96; // px dragged left before release triggers delete
+const DRAG_START = 8; // px of sideways movement before it counts as a swipe, not a tap
 
 export default function SwipeToDelete({ onDelete, className = "", children }) {
   const [dragX, setDragX] = useState(0);
@@ -12,19 +13,28 @@ export default function SwipeToDelete({ onDelete, className = "", children }) {
   // Mirrors `dragging` synchronously — event handlers must not gate on React
   // state, since pointerdown -> pointermove can fire before a re-render commits.
   const activeRef = useRef(false);
+  const swipingRef = useRef(false);
 
+  // The pointer is only captured once a real sideways swipe begins. Capturing
+  // on press (as before) retargets the click to this wrapper in desktop
+  // browsers, so the task's check/edit buttons never received mouse clicks.
   function handlePointerDown(e) {
     if (e.pointerType === "mouse" && e.button !== 0) return;
     startX.current = e.clientX;
     lastDelta.current = 0;
     activeRef.current = true;
-    setDragging(true);
-    e.currentTarget.setPointerCapture(e.pointerId);
+    swipingRef.current = false;
   }
 
   function handlePointerMove(e) {
     if (!activeRef.current) return;
     const delta = Math.min(0, e.clientX - startX.current);
+    if (!swipingRef.current) {
+      if (delta > -DRAG_START) return;
+      swipingRef.current = true;
+      setDragging(true);
+      e.currentTarget.setPointerCapture(e.pointerId);
+    }
     lastDelta.current = delta;
     setDragX(delta);
   }
@@ -32,6 +42,8 @@ export default function SwipeToDelete({ onDelete, className = "", children }) {
   function finishDrag() {
     if (!activeRef.current) return;
     activeRef.current = false;
+    if (!swipingRef.current) return;
+    swipingRef.current = false;
     setDragging(false);
     if (lastDelta.current < -DELETE_THRESHOLD) {
       setLeaving(true);
